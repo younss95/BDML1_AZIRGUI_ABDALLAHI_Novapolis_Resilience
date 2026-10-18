@@ -1,0 +1,9 @@
+u,v,cost,statut
+S1,S2,10,disponible
+S1,S4,15,disponible
+S2,S5,8,disponible
+S2,S3,12,disponible
+S4,S5,12,disponible
+S5,S3,9,disponible
+S3,S6,20,disponible
+S1,S3,25,interdit

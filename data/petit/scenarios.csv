@@ -1,0 +1,4 @@
+scenario,type_element,u,v,action
+fermeture_axe,route,S2,S3,fermer
+fermeture_axe,route,S3,S2,fermer
+panne_fibre,fibre,S2,S5,supprimer

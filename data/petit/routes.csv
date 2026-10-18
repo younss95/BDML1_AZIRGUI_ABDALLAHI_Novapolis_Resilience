@@ -1,0 +1,11 @@
+u,v,temps_normal,temps_pointe,statut
+S1,S2,6,10,ouvert
+S2,S1,6,12,ouvert
+S2,S3,8,15,ouvert
+S3,S2,8,14,ouvert
+S1,S4,5,9,ouvert
+S4,S5,7,11,ouvert
+S5,S3,4,6,ouvert
+S2,S5,3,5,ouvert
+S3,S6,6,9,ouvert
+S6,S3,6,9,travaux

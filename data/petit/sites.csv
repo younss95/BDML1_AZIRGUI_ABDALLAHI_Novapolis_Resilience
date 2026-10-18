@@ -1,0 +1,8 @@
+id,nom,type,longitude,latitude
+S1,Caserne Nord,caserne,2.35,48.90
+S2,Hopital Central,hopital,2.36,48.88
+S3,Quartier Lilas,quartier,2.40,48.87
+S4,Quartier Port,quartier,2.33,48.85
+S5,Ecole Jaures,ecole,2.38,48.86
+S6,Telecom Est,telecom,2.42,48.89
+S7,Quartier Isole,quartier,2.50,48.80
