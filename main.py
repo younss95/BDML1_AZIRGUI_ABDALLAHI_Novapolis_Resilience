@@ -2,8 +2,9 @@
 import argparse
 import sys
 
-from novapolis.lire_csv import charger_jeu, ValidationError
-from novapolis import parcours as tr
+from novapolis.donnees.csv_reader import charger_jeu
+from novapolis.donnees.exceptions import ErreurValidation
+from novapolis.graphes import parcours as tr   
 
 
 def main():
@@ -15,13 +16,13 @@ def main():
 
     try:
         sites, routes, fibre, demandes = charger_jeu(args.data)
-    except ValidationError as e:
+    except ErreurValidation as e:
         print("Données invalides :\n" + str(e))
         sys.exit(1)
 
     if args.op == "validate":
-        print(f"OK : {len(sites)} sites, {len(routes.edges())} arcs routiers, "
-              f"{len(fibre.edges())} tronçons de fibre, {len(demandes)} demandes")
+        print(f"OK : {len(sites)} sites, {len(routes.aretes())} arcs routiers, "
+              f"{len(fibre.aretes())} tronçons de fibre, {len(demandes)} demandes")
 
     if args.op == "accessibilite":
         diagnostic_accessibilite(sites, routes, fibre, demandes)

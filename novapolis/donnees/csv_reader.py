@@ -2,12 +2,11 @@
 import csv
 import os
 
+from .exceptions import ErreurValidation
+from novapolis.graphes.graphe import Graphe
+
 STATUTS_ROUTE = {"ouvert", "ferme", "travaux"}
 STATUTS_FIBRE = {"disponible", "interdit"}
-
-
-class ValidationError(Exception):
-    pass
 
 
 def _lire(chemin):
@@ -16,6 +15,7 @@ def _lire(chemin):
 
 
 def _nombre(valeur, nom, fichier, ligne, erreurs, negatif_ok=False):
+    """Convertit une valeur en float et vérifie qu'elle est positive si nécessaire."""
     try:
         x = float(valeur)
     except (TypeError, ValueError):
@@ -28,6 +28,7 @@ def _nombre(valeur, nom, fichier, ligne, erreurs, negatif_ok=False):
 
 
 def charger_sites(dossier, erreurs):
+    """Retourne un dictionnaire {id: données} des sites. Les doublons sont signalés."""
     sites = {}
     for i, r in enumerate(_lire(os.path.join(dossier, "sites.csv")), start=2):
         if r["id"] in sites:
@@ -38,11 +39,10 @@ def charger_sites(dossier, erreurs):
 
 
 def charger_routes(dossier, sites, erreurs, pointe=False):
-    """Retourne un Graph orienté. Les arcs 'ferme' sont conservés avec leur statut."""
-    from .graphe import Graph
-    g = Graph(oriente=True)
+    """Retourne un Graphe orienté. Les arcs 'ferme' sont conservés avec leur statut."""
+    g = Graphe(oriente=True)
     for s in sites:
-        g.add_node(s)
+        g.ajouter_noeud(s)
     col = "temps_pointe" if pointe else "temps_normal"
     for i, r in enumerate(_lire(os.path.join(dossier, "routes.csv")), start=2):
         ok = True
@@ -55,15 +55,15 @@ def charger_routes(dossier, sites, erreurs, pointe=False):
             ok = False
         t = _nombre(r[col], col, "routes.csv", i, erreurs)
         if ok and t is not None:
-            g.add_edge(r["u"], r["v"], t, r["statut"])
+            g.ajouter_arete(r["u"], r["v"], t, r["statut"])
     return g
 
 
 def charger_fibre(dossier, sites, erreurs):
-    from .graphe import Graph
-    g = Graph(oriente=False)
+    """Retourne un Graphe non orienté. Les arêtes 'interdit' sont conservées avec leur statut."""
+    g = Graphe(oriente=False)
     for s in sites:
-        g.add_node(s)
+        g.ajouter_noeud(s)
     for i, r in enumerate(_lire(os.path.join(dossier, "fibre.csv")), start=2):
         ok = True
         for k in ("u", "v"):
@@ -75,11 +75,12 @@ def charger_fibre(dossier, sites, erreurs):
             ok = False
         c = _nombre(r["cost"], "cost", "fibre.csv", i, erreurs)
         if ok and c is not None:
-            g.add_edge(r["u"], r["v"], c, r["statut"])
+            g.ajouter_arete(r["u"], r["v"], c, r["statut"])
     return g
 
 
 def charger_demandes(dossier, sites, erreurs):
+    """Retourne une liste de demandes. Les doublons et références invalides sont signalés."""
     demandes, ids = [], set()
     for i, r in enumerate(_lire(os.path.join(dossier, "demandes.csv")), start=2):
         if r["id"] in ids:
@@ -94,12 +95,12 @@ def charger_demandes(dossier, sites, erreurs):
 
 
 def charger_jeu(dossier):
-    """Charge et valide un jeu complet. Lève ValidationError si des erreurs existent."""
+    """Charge et valide un jeu complet. Lève ErreurValidation si des erreurs existent."""
     erreurs = []
     sites = charger_sites(dossier, erreurs)
     routes = charger_routes(dossier, sites, erreurs)
     fibre = charger_fibre(dossier, sites, erreurs)
     demandes = charger_demandes(dossier, sites, erreurs)
     if erreurs:
-        raise ValidationError("\n".join(erreurs))
+        raise ErreurValidation("\n".join(erreurs))
     return sites, routes, fibre, demandes
