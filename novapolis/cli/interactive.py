@@ -4,6 +4,7 @@ Utilise questionary pour les menus interactifs et rich pour le formatage.
 """
 
 import os
+import subprocess
 import sys
 from typing import Optional, Tuple, Dict, Any, List
 import questionary
@@ -15,13 +16,20 @@ from rich.text import Text
 from novapolis.donnees.exceptions import ErreurValidation
 from novapolis.donnees.csv_reader import charger_jeu
 from novapolis.graphes import parcours as tr
+from novapolis.graphes import chemins as ch
+from novapolis.graphes.arbre import kruskal, prim, simuler_panne_et_reparer
 
 console = Console()
+
+CONFIGS_SECOURS = [
+    {"type_demande": "incendie", "type_site": "caserne", "label": "Incendie"},
+    {"type_demande": "medical", "type_site": "hopital", "label": "Médical"}
+]
 
 
 def effacer_ecran() -> None:
     """Efface l'écran du terminal."""
-    os.system('cls' if os.name == 'nt' else 'clear')
+    subprocess.run("cls" if os.name == "nt" else "clear", shell=True)
 
 
 def afficher_en_tete() -> None:
@@ -30,6 +38,10 @@ def afficher_en_tete() -> None:
     titre.append(" - Outil d'Analyse du Réseau Urbain", style="white")
     console.print(Panel(titre, expand=False, border_style="cyan"))
     console.print("\n")
+    
+def afficher_section(titre: str) -> None:
+    """Affiche un titre de section."""
+    console.print(Panel(titre, style="bold magenta italic", expand=False))
 
 
 def selectionner_dossier_donnees(chemin_initial: str = ".") -> str:
@@ -84,7 +96,10 @@ def afficher_menu_principal() -> str:
         "Que souhaitez-vous faire ?",
         choices=[
             questionary.Choice("Valider l'intégrité des données", "validate"),
-            questionary.Choice("Diagnostic d'accessibilité des casernes", "accessibilite"),
+            questionary.Choice("Module 1 : Diagnostic d'accessibilité", "accessibilite"),
+            questionary.Choice("Module 2 : Itinéraires des secours", "itineraires"),
+            questionary.Choice("Module 3 : Détection de circuits absorbants", "absorbants"),
+            questionary.Choice("Module 4 : Conception du réseau fibre", "arbres"),
             questionary.Choice("Quitter l'application", "quitter")
         ],
         style=questionary.Style([('selected', 'fg:cyan bold')])
@@ -104,22 +119,30 @@ def executer_validation(sites: Dict, routes: Any, fibre: Any, demandes: List) ->
 
 def executer_diagnostic(sites: Dict, routes: Any, fibre: Any, demandes: List) -> None:
     """Exécute l'analyse d'accessibilité orientée."""
-    casernes = [s for s, r in sites.items() if r["type"] == "caserne"]
-    console.print(f"Casernes identifiées : [bold cyan]{', '.join(casernes)}[/bold cyan]\n")
-
-    distances, _ = tr.parcours_largeur(routes, casernes)
-    sites_inaccessibles = tr.sites_inaccessibles(routes, casernes)
+    afficher_section("Accessibilité Routière")
     
-    # Accessibilité globale
-    console.print("********** Accessibilité Routière **********", style="bold magenta")
-    console.print(f"Sites couverts : [green]{len(distances)}/{len(sites)}[/green]")
-    if sites_inaccessibles:
-        console.print(f"Sites inaccessibles : [red]{', '.join(sites_inaccessibles)}[/red]")
-    else:
-        console.print("Sites inaccessibles : [green]Aucun[/green]")
+    distances_par_type = {}
+    
+    for config in CONFIGS_SECOURS:
+        sites_secours = [s for s, r in sites.items() if r["type"] == config["type_site"]]
+        console.print(f"Sites {config['label']} identifiés : [bold cyan]{', '.join(sites_secours) if sites_secours else 'Aucun'}[/bold cyan]")
         
-    # Traitement des demandes
-    console.print("\n********** Traitement des Demandes **********", style="bold magenta")
+        if sites_secours:
+            distances, _ = tr.parcours_largeur(routes, sites_secours)
+            inaccessibles = tr.sites_inaccessibles(routes, sites_secours)
+            distances_par_type[config["type_demande"]] = distances
+            
+            console.print(f"Sites couverts ({config['label']}) : [green]{len(distances)}/{len(sites)}[/green]")
+            if inaccessibles:
+                console.print(f"Sites inaccessibles ({config['label']}) : [red]{', '.join(inaccessibles)}[/red]\n")
+            else:
+                console.print(f"Sites inaccessibles ({config['label']}) : [green]Aucun[/green]\n")
+        else:
+            distances_par_type[config["type_demande"]] = {}
+            console.print(f"Sites couverts ({config['label']}) : [red]0/{len(sites)}[/red]")
+            console.print(f"Sites inaccessibles ({config['label']}) : [red]Tous[/red]\n")
+        
+    afficher_section("Traitement des Demandes")
     table_demandes = Table(show_header=True, header_style="bold cyan")
     table_demandes.add_column("ID")
     table_demandes.add_column("Type")
@@ -128,13 +151,15 @@ def executer_diagnostic(sites: Dict, routes: Any, fibre: Any, demandes: List) ->
     table_demandes.add_column("Distance (arcs)")
     
     for d in demandes:
+        type_d = d["type"]
+        distances = distances_par_type.get(type_d, {})
         dist_arcs = distances.get(d["origine"])
         texte_dist = f"{dist_arcs}" if dist_arcs is not None else "[red]INACCESSIBLE[/red]"
-        table_demandes.add_row(d["id"], d["type"], d["priorite"], d["origine"], texte_dist)
+        table_demandes.add_row(d["id"], type_d, d["priorite"], d["origine"], texte_dist)
     console.print(table_demandes)
 
     # Analyse structurelle
-    console.print("\n********** Analyse Structurelle **********", style="bold magenta")
+    afficher_section("Analyse Structurelle")
     cycle = tr.detecter_cycle_oriente(routes)
     if cycle:
         console.print(f"Cycle routier détecté : [yellow]{' -> '.join(cycle)}[/yellow]")
@@ -150,6 +175,162 @@ def executer_diagnostic(sites: Dict, routes: Any, fibre: Any, demandes: List) ->
     
     comps_fibre = tr.composantes_connexes(fibre)
     console.print(f"Composantes connexes (fibre) : [cyan]{len(comps_fibre)}[/cyan]")
+
+
+def executer_itineraires(sites: Dict, routes: Any, demandes: List) -> None:
+    """Calcule et affiche les itinéraires de secours pour chaque demande."""
+    afficher_section("Calcul des Itinéraires de Secours")
+
+    algo = questionary.select(
+        "Choisissez l'algorithme :",
+        choices=["Dijkstra (Temps physiques non négatifs)", "Bellman-Ford (Supporte les coûts négatifs)"]
+    ).ask()
+    
+    sites_secours_par_type = {}
+    for config in CONFIGS_SECOURS:
+        sites_secours = [s for s, r in sites.items() if r["type"] == config["type_site"]]
+        if not sites_secours:
+            console.print(f"Err: Aucun site de type '{config['type_site']}' disponible pour les urgences '{config['label']}'.", style="yellow")
+        sites_secours_par_type[config["type_demande"]] = sites_secours
+        
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Demande")
+    table.add_column("Type de Secours")
+    table.add_column("Origine")
+    table.add_column("Destination")
+    table.add_column("Temps (min)")
+    table.add_column("Nombre d'arcs")
+    table.add_column("Chemin (Résumé)", overflow="fold")
+    
+    with console.status("[cyan]Calcul des chemins en cours...[/cyan]"):
+        for d in demandes:
+            destination = d["origine"]
+            type_d = d["type"]
+            
+            sources_secours = sites_secours_par_type.get(type_d)
+            if not sources_secours:
+                console.print(f"Demande {d['id']} ignorée (sources indisponibles ou type inconnu : {type_d}).", style="yellow")
+                continue
+                
+            meilleur_temps = float('inf')
+            meilleure_source = None
+            meilleur_chemin = None
+            
+            for source in sources_secours:
+                if algo.startswith("Dijkstra"):
+                    distances, predecesseurs = ch.dijkstra(routes, source)
+                else:
+                    distances, predecesseurs, _ = ch.bellman_ford(routes, source)
+                    
+                if distances[destination] < meilleur_temps:
+                    meilleur_temps = distances[destination]
+                    meilleure_source = source
+                    meilleur_chemin = ch.reconstruire_chemin(predecesseurs, source, destination)
+            
+            if meilleur_chemin:
+                nb_arcs = len(meilleur_chemin) - 1
+                table.add_row(d["id"], type_d, 
+                              meilleure_source, destination, 
+                              f"{meilleur_temps:.2f}", str(nb_arcs), 
+                              " -> ".join(meilleur_chemin)
+                              )
+            else:
+                table.add_row(d["id"], type_d, "N/A", destination, "[red]INACCESSIBLE[/red]", "-", "-")
+                
+    console.print(table)
+
+
+def executer_circuits_absorbants(routes: Any) -> None:
+    """Détecte la présence de circuits absorbants dans le réseau routier."""
+    afficher_section("Détection de Circuits Absorbants")
+    
+    algo = questionary.select(
+        "Choisissez l'algorithme d'analyse :",
+        choices=["Bellman-Ford (Depuis une source spécifique)", "Floyd-Warshall (Analyse globale)"]
+    ).ask()
+    
+    if algo.startswith("Bellman-Ford"):
+        noeuds = routes.noeuds()
+        if not noeuds:
+            console.print("Err: Aucun noeud n'est disponible dans le réseau routier.", style="red")
+            return
+            
+        if len(noeuds) < 10:
+            source = questionary.select(
+                "Sélectionnez le noeud source pour l'analyse :",
+                choices=noeuds
+            ).ask()
+        else:
+            source = questionary.autocomplete(
+                "Saisissez le noeud source pour l'analyse :",
+                choices=noeuds
+            ).ask()
+            
+        if source not in noeuds:
+            console.print(f"Err: Le noeud '{source}' n'existe pas dans le graphe.", style="red")
+            return
+            
+        with console.status("[cyan]Recherche de cycles à poids négatifs en cours...[/cyan]"):
+            _, _, cycle_present = ch.bellman_ford(routes, source)
+            if cycle_present:
+                console.print(f"Cycle absorbant [red]DÉTECTÉ[/red] (accessible depuis {source}).")
+            else:
+                console.print(f"Opération réussie. Aucun cycle absorbant accessible depuis {source}.", style="green")
+    else:
+        with console.status("[cyan]Recherche de cycles à poids négatifs en cours...[/cyan]"):
+            _, _, noeuds_cycles = ch.floyd_warshall(routes)
+            if noeuds_cycles:
+                console.print(f"Cycles absorbants [red]DÉTECTÉS[/red] affectant {len(noeuds_cycles)} noeud(s).")
+                console.print(f"Noeuds impliqués : [yellow]{', '.join(noeuds_cycles[:10])}{'...' if len(noeuds_cycles)>10 else ''}[/yellow]")
+            else:
+                console.print("Opération réussie. Aucun circuit absorbant n'existe dans l'ensemble du réseau.", style="green")
+
+
+def executer_arbres(fibre: Any) -> None:
+    """Calcule l'arbre couvrant de la fibre et permet la simulation de pannes."""
+    afficher_section("Architecture Réseau Fibre")
+    
+    algo = questionary.select(
+        "Quel algorithme souhaitez-vous utiliser ?",
+        choices=["Kruskal", "Prim"]
+    ).ask()
+    
+    arbre = []
+    cout = 0.0
+    composantes = 0
+    
+    with console.status(f"[cyan]Calcul via {algo} en cours...[/cyan]"):
+        if algo == "Kruskal":
+            arbre, cout, composantes = kruskal(fibre)
+        else:
+            arbre, cout, composantes = prim(fibre)
+            
+    console.print(f"\nAlgorithme utilisé : [bold green]{algo}[/bold green]")
+    console.print(f"Coût total de l'infrastructure : [bold yellow]{cout:.2f}[/bold yellow]")
+    console.print(f"Nombre de liaisons établies : [bold cyan]{len(arbre)}[/bold cyan]")
+    
+    if composantes > 1:
+        console.print(f"Attention : Le réseau est divisé en [red]{composantes}[/red] zones distinctes (Forêt couvrante).")
+    else:
+        console.print("Réseau entièrement connexe.", style="green")
+
+    if not arbre:
+        return
+
+    simuler = questionary.confirm("Voulez-vous simuler la panne d'un tronçon majeur et évaluer la résilience ?").ask()
+    if simuler:
+        troncon_a_casser = arbre[-1]
+        console.print(f"\nSimulation de panne sur la liaison : [bold red]{troncon_a_casser[0]} <-> {troncon_a_casser[1]}[/bold red] (Coût: {troncon_a_casser[2]})")
+        
+        nouvelle_arete, cout_reparation = simuler_panne_et_reparer(fibre, arbre, (troncon_a_casser[0], troncon_a_casser[1]))
+        
+        if nouvelle_arete:
+            console.print("Opération réussie. Route de secours identifiée.", style="green")
+            console.print(f"Nouveau raccordement : [cyan]{nouvelle_arete[0]} <-> {nouvelle_arete[1]}[/cyan] (Coût: {cout_reparation})")
+            surcout = cout_reparation - troncon_a_casser[2]
+            console.print(f"Impact financier de l'incident : [yellow]+{surcout:.2f}[/yellow]")
+        else:
+            console.print("Err: Aucun raccordement alternatif disponible. Rupture de connectivité réseau.", style="bold red")
 
 
 def demarrer_cli() -> None:
@@ -183,6 +364,12 @@ def demarrer_cli() -> None:
                 executer_validation(sites, routes, reseau_fibre, demandes)
             elif choix == "accessibilite":
                 executer_diagnostic(sites, routes, reseau_fibre, demandes)
+            elif choix == "itineraires":
+                executer_itineraires(sites, routes, demandes)
+            elif choix == "absorbants":
+                executer_circuits_absorbants(routes)
+            elif choix == "arbres":
+                executer_arbres(reseau_fibre)
             elif choix == "quitter":
                 console.print("Fermeture de l'application. Au revoir.", style="cyan")
                 sys.exit(0)
