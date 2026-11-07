@@ -17,6 +17,7 @@ from novapolis.donnees.exceptions import ErreurValidation
 from novapolis.donnees.csv_reader import charger_jeu, charger_scenarios
 from novapolis.graphes import parcours as tr
 from novapolis.graphes import chemins as ch
+from novapolis.graphes import graphes_artificiels as artificiels
 from novapolis.graphes.arbre import kruskal, prim, simuler_panne_et_reparer
 from novapolis.indicateurs import comparer_scenarios, formater_valeur, LIBELLES_RESUME
 
@@ -243,50 +244,93 @@ def executer_itineraires(sites: Dict, routes: Any, demandes: List) -> None:
     console.print(table)
 
 
+def formater_distance(d: float) -> str:
+    """-inf et inf ne sont pas des durées : on les affiche comme des états."""
+    if d == float("-inf"):
+        return "[red]-∞ (non définie)[/red]"
+    if d == float("inf"):
+        return "inaccessible"
+    return f"{d:g}"
+
+
 def executer_circuits_absorbants(routes: Any) -> None:
-    """Détecte la présence de circuits absorbants dans le réseau routier."""
+    """Détecte les circuits absorbants, sur le réseau chargé ou sur un graphe de test artificiel."""
     afficher_section("Détection de Circuits Absorbants")
-    
+
+    jeu = questionary.select(
+        "Sur quel graphe travailler ?",
+        choices=[
+            "Réseau routier chargé (temps positifs)",
+            "Test 1 : circuit absorbant ACCESSIBLE depuis A",
+            "Test 2 : circuit absorbant NON accessible depuis A",
+        ]
+    ).ask()
+
+    source_test = None
+    if jeu.startswith("Test 1"):
+        graphe, source_test = artificiels.circuit_absorbant_accessible()
+    elif jeu.startswith("Test 2"):
+        graphe, source_test = artificiels.circuit_absorbant_inaccessible()
+    else:
+        graphe = routes
+    if source_test:
+        console.print("Graphe artificiel à poids négatifs (jeu de test, pas une durée réaliste).", style="yellow")
+
     algo = questionary.select(
         "Choisissez l'algorithme d'analyse :",
         choices=["Bellman-Ford (Depuis une source spécifique)", "Floyd-Warshall (Analyse globale)"]
     ).ask()
-    
+
+    noeuds = graphe.noeuds()
+    if not noeuds:
+        console.print("Err: Aucun noeud n'est disponible dans le graphe.", style="red")
+        return
+
     if algo.startswith("Bellman-Ford"):
-        noeuds = routes.noeuds()
-        if not noeuds:
-            console.print("Err: Aucun noeud n'est disponible dans le réseau routier.", style="red")
-            return
-            
-        if len(noeuds) < 10:
-            source = questionary.select(
-                "Sélectionnez le noeud source pour l'analyse :",
-                choices=noeuds
-            ).ask()
+        if source_test:
+            source = source_test
+        elif len(noeuds) < 10:
+            source = questionary.select("Sélectionnez le noeud source pour l'analyse :", choices=noeuds).ask()
         else:
-            source = questionary.autocomplete(
-                "Saisissez le noeud source pour l'analyse :",
-                choices=noeuds
-            ).ask()
-            
+            source = questionary.autocomplete("Saisissez le noeud source pour l'analyse :", choices=noeuds).ask()
+
         if source not in noeuds:
             console.print(f"Err: Le noeud '{source}' n'existe pas dans le graphe.", style="red")
             return
-            
-        with console.status("[cyan]Recherche de cycles à poids négatifs en cours...[/cyan]"):
-            _, _, cycle_present = ch.bellman_ford(routes, source)
-            if cycle_present:
-                console.print(f"Cycle absorbant [red]DÉTECTÉ[/red] (accessible depuis {source}).")
-            else:
-                console.print(f"Opération réussie. Aucun cycle absorbant accessible depuis {source}.", style="green")
+
+        distances, _, cycle_present = ch.bellman_ford(graphe, source)
+        if cycle_present:
+            console.print(f"Circuit absorbant [red]DÉTECTÉ[/red], accessible depuis {source}.")
+        else:
+            console.print(f"Aucun circuit absorbant accessible depuis {source}.", style="green")
+
+        if len(noeuds) <= 15:
+            table = Table(show_header=True, header_style="bold cyan", title=f"Distances depuis {source}")
+            table.add_column("Site")
+            table.add_column("Distance", justify="right")
+            for n in noeuds:
+                table.add_row(n, formater_distance(distances[n]))
+            console.print(table)
+        else:
+            affectes = [n for n in noeuds if distances[n] == float("-inf")]
+            console.print(f"{len(affectes)} site(s) sans distance finie (-∞).")
     else:
-        with console.status("[cyan]Recherche de cycles à poids négatifs en cours...[/cyan]"):
-            _, _, noeuds_cycles = ch.floyd_warshall(routes)
-            if noeuds_cycles:
-                console.print(f"Cycles absorbants [red]DÉTECTÉS[/red] affectant {len(noeuds_cycles)} noeud(s).")
-                console.print(f"Noeuds impliqués : [yellow]{', '.join(noeuds_cycles[:10])}{'...' if len(noeuds_cycles)>10 else ''}[/yellow]")
-            else:
-                console.print("Opération réussie. Aucun circuit absorbant n'existe dans l'ensemble du réseau.", style="green")
+        distances, _, noeuds_cycles = ch.floyd_warshall(graphe)
+        if noeuds_cycles:
+            console.print(f"Circuits absorbants [red]DÉTECTÉS[/red] dans le graphe ({len(noeuds_cycles)} site(s) concerné(s)).")
+            console.print(f"Sites sur un circuit : [yellow]{', '.join(noeuds_cycles[:10])}{'...' if len(noeuds_cycles) > 10 else ''}[/yellow]")
+            if source_test:
+                table = Table(show_header=True, header_style="bold cyan", title=f"Distances depuis {source_test}")
+                table.add_column("Site")
+                table.add_column("Distance", justify="right")
+                for n in noeuds:
+                    table.add_row(n, formater_distance(distances[source_test][n]))
+                console.print(table)
+                if all(distances[source_test][n] != float("-inf") for n in noeuds):
+                    console.print(f"Le circuit existe mais n'est pas accessible depuis {source_test}.", style="yellow")
+        else:
+            console.print("Aucun circuit absorbant n'existe dans le graphe.", style="green")
+
 
 
 def executer_arbres(fibre: Any) -> None:

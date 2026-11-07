@@ -45,13 +45,14 @@ def dijkstra(graphe: Graphe, source: str) -> Tuple[Dict[str, float], Dict[str, O
 def bellman_ford(graphe: Graphe, source: str) -> Tuple[Dict[str, float], Dict[str, Optional[str]], bool]:
     """
     Algorithme de Bellman-Ford gérant les poids négatifs.
-    Retourne les distances, les prédécesseurs, et un booléen indiquant la présence d'un cycle absorbant accessible.
+    Retourne les distances, les prédécesseurs, et un booléen indiquant la présence d'un
+    circuit absorbant ACCESSIBLE depuis la source.
     """
     distances = {noeud: float('inf') for noeud in graphe.noeuds()}
     predecesseurs: Dict[str, Optional[str]] = {noeud: None for noeud in graphe.noeuds()}
     distances[source] = 0.0
     noeuds = graphe.noeuds()
-    
+
     for _ in range(len(noeuds) - 1):
         changement = False
         for u in noeuds:
@@ -66,8 +67,9 @@ def bellman_ford(graphe: Graphe, source: str) -> Tuple[Dict[str, float], Dict[st
                     changement = True
         if not changement:
             break
-            
-    cycle_absorbant = False
+
+    # Passage de vérification : un sommet qui s'améliore encore est "instable"
+    sommets_instables = set()
     for u in noeuds:
         if distances[u] == float('inf'):
             continue
@@ -75,11 +77,21 @@ def bellman_ford(graphe: Graphe, source: str) -> Tuple[Dict[str, float], Dict[st
             if arete.statut in STATUTS_BLOQUES:
                 continue
             if distances[u] + arete.poids < distances[v]:
-                cycle_absorbant = True
-                break
-        if cycle_absorbant:
-            break
-            
+                sommets_instables.add(v)
+
+    cycle_absorbant = bool(sommets_instables)
+
+    # Propagation de -inf : tout sommet atteignable depuis un sommet instable
+    pile = list(sommets_instables)
+    while pile:
+        u = pile.pop()
+        if distances[u] == float('-inf'):
+            continue
+        distances[u] = float('-inf')
+        for v, arete in graphe.adjacences[u].items():
+            if arete.statut not in STATUTS_BLOQUES and distances[v] != float('-inf'):
+                pile.append(v)
+
     return distances, predecesseurs, cycle_absorbant
 
 
@@ -107,27 +119,41 @@ def floyd_warshall(graphe: Graphe) -> Tuple[Dict[str, Dict[str, float]], Dict[st
                     if nouvelle_distance < distances[i][j]:
                         distances[i][j] = nouvelle_distance
                         predecesseurs[i][j] = predecesseurs[k][j]
-                        
+
     noeuds_dans_cycle_negatif = [u for u in noeuds if distances[u][u] < 0]
-    
+
+    # Les trajets qui traversent un circuit absorbant n'ont pas de distance finie : -inf
+    for k in noeuds_dans_cycle_negatif:
+        for i in noeuds:
+            if distances[i][k] == float('inf'):
+                continue
+            for j in noeuds:
+                if distances[k][j] != float('inf'):
+                    distances[i][j] = float('-inf')
+
     return distances, predecesseurs, noeuds_dans_cycle_negatif
 
 
 def reconstruire_chemin(predecesseurs: Dict[str, Optional[str]], source: str, cible: str) -> Optional[List[str]]:
     """
     Reconstruit l'itinéraire de la source vers la cible à partir du dictionnaire des prédécesseurs.
-    Retourne la liste des sommets visités ou None si la cible est inaccessible.
+    Retourne la liste des sommets visités ou None si la cible est inaccessible, ou si les
+    prédécesseurs forment une boucle (signe d'un circuit absorbant : pas de chemin défini).
     """
     if cible == source:
         return [source]
-        
+
     if cible not in predecesseurs or predecesseurs[cible] is None:
         return None
-        
+
     chemin = []
+    deja_vus = set()
     noeud_courant = cible
     while noeud_courant is not None:
+        if noeud_courant in deja_vus:
+            return None
+        deja_vus.add(noeud_courant)
         chemin.append(noeud_courant)
         noeud_courant = predecesseurs[noeud_courant]
-        
+
     return chemin[::-1]
