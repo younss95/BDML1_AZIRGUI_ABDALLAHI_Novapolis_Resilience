@@ -104,3 +104,35 @@ def charger_jeu(dossier):
     if erreurs:
         raise ErreurValidation("\n".join(erreurs))
     return sites, routes, fibre, demandes
+
+
+ACTIONS_VALIDES = {"route": {"fermer", "ouvrir"}, "fibre": {"supprimer", "interdire"}}
+
+
+def charger_scenarios(dossier, sites):
+    """Lit scenarios.csv et retourne {nom_scenario: [actions]}.
+    Retourne {} si le fichier n'existe pas. Lève ErreurValidation si une ligne est invalide."""
+    chemin = os.path.join(dossier, "scenarios.csv")
+    if not os.path.exists(chemin):
+        return {}
+    erreurs, scenarios = [], {}
+    for i, r in enumerate(_lire(chemin), start=2):
+        if not r["scenario"]:
+            erreurs.append(f"scenarios.csv ligne {i} : nom de scénario manquant")
+            continue
+        if r["type_element"] not in ACTIONS_VALIDES:
+            erreurs.append(f"scenarios.csv ligne {i} : type_element inconnu '{r['type_element']}' (route ou fibre)")
+            continue
+        if r["action"] not in ACTIONS_VALIDES[r["type_element"]]:
+            erreurs.append(f"scenarios.csv ligne {i} : action '{r['action']}' invalide pour '{r['type_element']}'")
+            continue
+        ok = True
+        for k in ("u", "v"):
+            if r[k] not in sites:
+                erreurs.append(f"scenarios.csv ligne {i} : le site '{r[k]}' n'existe pas dans sites.csv")
+                ok = False
+        if ok:
+            scenarios.setdefault(r["scenario"], []).append(dict(r))
+    if erreurs:
+        raise ErreurValidation("\n".join(erreurs))
+    return scenarios

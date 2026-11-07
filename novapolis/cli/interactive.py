@@ -14,10 +14,12 @@ from rich.table import Table
 from rich.text import Text
 
 from novapolis.donnees.exceptions import ErreurValidation
-from novapolis.donnees.csv_reader import charger_jeu
+from novapolis.donnees.csv_reader import charger_jeu, charger_scenarios
 from novapolis.graphes import parcours as tr
 from novapolis.graphes import chemins as ch
 from novapolis.graphes.arbre import kruskal, prim, simuler_panne_et_reparer
+from novapolis.indicateurs import comparer_scenarios, formater_valeur, LIBELLES_RESUME
+
 
 console = Console()
 
@@ -100,6 +102,7 @@ def afficher_menu_principal() -> str:
             questionary.Choice("Module 2 : Itinéraires des secours", "itineraires"),
             questionary.Choice("Module 3 : Détection de circuits absorbants", "absorbants"),
             questionary.Choice("Module 4 : Conception du réseau fibre", "arbres"),
+            questionary.Choice("Module 5 : Résilience et scénarios", "resilience"),
             questionary.Choice("Quitter l'application", "quitter")
         ],
         style=questionary.Style([('selected', 'fg:cyan bold')])
@@ -333,6 +336,38 @@ def executer_arbres(fibre: Any) -> None:
             console.print("Err: Aucun raccordement alternatif disponible. Rupture de connectivité réseau.", style="bold red")
 
 
+def executer_resilience(sites: Dict, routes: Any, fibre: Any, demandes: List, scenarios: Dict) -> None:
+    """Compare la situation normale et les scénarios du fichier scenarios.csv."""
+    afficher_section("Résilience : comparaison des scénarios")
+    if not scenarios:
+        console.print("Aucun scenarios.csv dans ce dossier : seule la situation normale est évaluée.", style="yellow")
+
+    resultats = comparer_scenarios(sites, routes, fibre, demandes, scenarios)
+
+    table = Table(show_header=True, header_style="bold cyan", title="Indicateurs par scénario")
+    table.add_column("Indicateur")
+    for nom in resultats:
+        table.add_column(nom, justify="right")
+    for cle, libelle in LIBELLES_RESUME:
+        table.add_row(libelle, *[formater_valeur(cle, r["resume"][cle]) for r in resultats.values()])
+    console.print(table)
+
+    choix = questionary.select("Voir le détail des trajets pour quel scénario ?",
+                               choices=list(resultats),
+                               instruction="(flèches ↑↓ puis Entrée)").ask()
+    detail = Table(show_header=True, header_style="bold cyan", title=f"Trajets : {choix}")
+    for col in ("Demande", "Site", "Avant (min)", "Après (min)", "Retard", "Retard %", "Statut"):
+        detail.add_column(col)
+    for l in resultats[choix]["detail"]:
+        detail.add_row(
+            l["id"], l["origine"],
+            f"{l['avant']:.1f}" if l["avant"] is not None else "-",
+            f"{l['apres']:.1f}" if l["apres"] is not None else "-",
+            f"{l['retard']:+.1f}" if l["retard"] is not None else "-",
+            f"{l['retard_pct']:+.1f} %" if l["retard_pct"] is not None else "-",
+            l["statut"] if l["statut"] == "accessible" else f"[red]{l['statut']}[/red]")
+    console.print(detail)
+
 def demarrer_cli() -> None:
     """Point d'entrée principal de l'application interactive."""
     try:
@@ -347,6 +382,8 @@ def demarrer_cli() -> None:
         with console.status("[cyan]Chargement et validation des données en cours...[/cyan]"):
             try:
                 sites, routes, reseau_fibre, demandes = charger_jeu(dossier_donnees)
+                scenarios = charger_scenarios(dossier_donnees, sites)
+
             except ErreurValidation as erreur_validation:
                 console.print(f"\nErr: Validation échouée.\n{erreur_validation}", style="bold red")
                 sys.exit(1)
@@ -370,6 +407,8 @@ def demarrer_cli() -> None:
                 executer_circuits_absorbants(routes)
             elif choix == "arbres":
                 executer_arbres(reseau_fibre)
+            elif choix == "resilience":
+                executer_resilience(sites, routes, reseau_fibre, demandes, scenarios)
             elif choix == "quitter":
                 console.print("Fermeture de l'application. Au revoir.", style="cyan")
                 sys.exit(0)
