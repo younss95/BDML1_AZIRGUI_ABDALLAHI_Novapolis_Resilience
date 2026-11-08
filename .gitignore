@@ -4,9 +4,11 @@ __pycache__/
 .DS_Store
 data/*
 resultats/
+cache/
 
 !data/petit
 data/*
 !data/petit
 !data/realiste
 !data/genere
+!data/osm_creteil

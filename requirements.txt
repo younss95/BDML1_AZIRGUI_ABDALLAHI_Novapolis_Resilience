@@ -1,3 +1,4 @@
+# requirements.txt
 contourpy==1.4.0
 cycler==0.12.1
 fonttools==4.68.0
@@ -6,7 +7,7 @@ kiwisolver==1.5.1
 markdown-it-py==4.2.0
 matplotlib==3.11.2
 mdurl==0.1.2
-numpy==2.5.4
+numpy>=2.0.0
 packaging==26.3
 pillow==13.0.0
 pluggy==1.7.0
@@ -20,4 +21,8 @@ rich==15.0.0
 six==1.17.0
 tzdata==2026.6
 wcwidth==0.9.4
-loguru
+osmnx==1.9.1
+networkx==3.2.1
+pandas>=2.2.2
+loguru==0.7.2
+scipy
