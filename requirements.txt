@@ -20,3 +20,4 @@ rich==15.0.0
 six==1.17.0
 tzdata==2026.6
 wcwidth==0.9.4
+loguru
