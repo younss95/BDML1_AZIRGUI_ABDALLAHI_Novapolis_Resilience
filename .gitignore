@@ -6,3 +6,7 @@ data/*
 resultats/
 
 !data/petit
+data/*
+!data/petit
+!data/realiste
+!data/genere

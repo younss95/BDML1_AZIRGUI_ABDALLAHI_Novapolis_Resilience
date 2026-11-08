@@ -1,0 +1,3 @@
+scenario,type_element,u,v,action
+fermeture_axe,route,S62,S112,fermer
+panne_fibre,fibre,S25,S54,supprimer
