@@ -65,6 +65,8 @@ def selectionner_dossier_donnees(chemin_initial: str = ".") -> str:
             console.print("Err: Permission refusée pour ce dossier.", style="red")
             
         elements.append("✓ VALIDER CE DOSSIER")
+        elements.append("⚙ GÉNÉRER UN DATASET")
+        elements.append("📈 LANCER LES BENCHMARKS")
         elements.append("✗ QUITTER")
         
         choix = questionary.select(
@@ -85,6 +87,49 @@ def selectionner_dossier_donnees(chemin_initial: str = ".") -> str:
                 questionary.press_any_key_to_continue("Appuyez sur une touche pour réessayer...").ask()
             else:
                 return chemin_actuel
+        elif choix == "⚙ GÉNÉRER UN DATASET":
+            saisie_sites = questionary.text("Combien de sommets souhaitez-vous créer ?", default="1000").ask()
+            saisie_dossier = questionary.text("Nom du dossier (sera placé dans 'data/') :", default="grand").ask()
+
+            try:
+                nb_sites = int(saisie_sites)
+            except ValueError:
+                nb_sites = 1000
+                console.print("Valeur invalide, utilisation de 1000 par défaut.", style="yellow")
+
+            nom_dossier = saisie_dossier.strip() or "grand"
+            chemin_sauvegarde = os.path.join("data", nom_dossier)
+
+            from novapolis.generateur import generer_jeu_de_donnees
+            with console.status("[cyan]Génération en cours...[/cyan]"):
+                nb_demandes = max(10, nb_sites // 20)
+                generer_jeu_de_donnees(chemin_sauvegarde, nb_sites=nb_sites, nb_demandes=nb_demandes, degre_moyen=5)
+                
+            console.print(f"Jeu de données généré avec succès dans : [bold green]{chemin_sauvegarde}[/bold green]")
+            questionary.press_any_key_to_continue("Appuyez sur une touche pour recharger...").ask()
+
+        elif choix == "📈 LANCER LES BENCHMARKS":
+            saisie_max_sommets = questionary.text("Jusqu'à combien de sommets faire les évaluations globales ?", default="1000").ask()
+            saisie_max_fw = questionary.text("Maximum de sommets pour Floyd-Warshall ?", default="100").ask()
+
+            try:
+                max_sommets = int(saisie_max_sommets)
+            except ValueError:
+                max_sommets = 1000
+
+            try:
+                max_fw = int(saisie_max_fw)
+            except ValueError:
+                max_fw = 100
+
+            from novapolis.benchmarks import executer_benchmarks
+            dossier_sortie = os.path.join(chemin_actuel, "resultats")
+            with console.status("[cyan]Exécution des benchmarks en cours...[/cyan]"):
+                executer_benchmarks(dossier_sortie, max_sommets=max_sommets, max_fw=max_fw)
+                
+            console.print(f"Benchmarks terminés. Graphiques sauvegardés dans [bold green]{dossier_sortie}[/bold green]")
+            questionary.press_any_key_to_continue("Appuyez sur une touche pour continuer...").ask()
+            
         elif choix == ".. (Dossier parent)":
             chemin_actuel = os.path.dirname(chemin_actuel)
         else:
@@ -104,6 +149,7 @@ def afficher_menu_principal() -> str:
             questionary.Choice("Module 3 : Détection de circuits absorbants", "absorbants"),
             questionary.Choice("Module 4 : Conception du réseau fibre", "arbres"),
             questionary.Choice("Module 5 : Résilience et scénarios", "resilience"),
+            questionary.Choice("Exécuter les benchmarks (Module 5 Expériences)", "benchmark"),
             questionary.Choice("Quitter l'application", "quitter")
         ],
         style=questionary.Style([('selected', 'fg:cyan bold')])
@@ -170,15 +216,15 @@ def executer_diagnostic(sites: Dict, routes: Any, fibre: Any, demandes: List) ->
     else:
         console.print("Cycle routier détecté : [green]Aucun[/green]")
 
-    scc = tr.composantes_fortement_connexes(routes)
-    console.print(f"Composantes fortement connexes (routes) : [cyan]{len(scc)}[/cyan]")
-    
+    composantes_fortes = tr.composantes_fortement_connexes(routes)
+    console.print(f"Composantes fortement connexes (routes) : [cyan]{len(composantes_fortes)}[/cyan]")
+
     isoles = tr.sites_isoles(routes)
     if isoles:
         console.print(f"Sites isolés : [red]{', '.join(isoles)}[/red]")
-    
-    comps_fibre = tr.composantes_connexes(fibre)
-    console.print(f"Composantes connexes (fibre) : [cyan]{len(comps_fibre)}[/cyan]")
+
+    composantes_fibre = tr.composantes_connexes(fibre)
+    console.print(f"Composantes connexes (fibre) : [cyan]{len(composantes_fibre)}[/cyan]")
 
 
 def executer_itineraires(sites: Dict, routes: Any, demandes: List) -> None:
@@ -385,8 +431,8 @@ def executer_resilience(sites: Dict, routes: Any, fibre: Any, demandes: List, sc
     afficher_section("Résilience : comparaison des scénarios")
     if not scenarios:
         console.print("Aucun scenarios.csv dans ce dossier : seule la situation normale est évaluée.", style="yellow")
-
-    resultats = comparer_scenarios(sites, routes, fibre, demandes, scenarios)
+    with console.status("[cyan]Calcul...[/cyan]"):
+        resultats = comparer_scenarios(sites, routes, fibre, demandes, scenarios)
 
     table = Table(show_header=True, header_style="bold cyan", title="Indicateurs par scénario")
     table.add_column("Indicateur")
@@ -453,6 +499,25 @@ def demarrer_cli() -> None:
                 executer_arbres(reseau_fibre)
             elif choix == "resilience":
                 executer_resilience(sites, routes, reseau_fibre, demandes, scenarios)
+            elif choix == "benchmark":
+                from novapolis.benchmarks import executer_benchmarks
+                
+                saisie_max_sommets = questionary.text("Jusqu'à combien de sommets faire les évaluations globales ?", default="1000").ask()
+                saisie_max_fw = questionary.text("Maximum de sommets pour Floyd-Warshall ?", default="100").ask()
+                
+                try:
+                    max_sommets = int(saisie_max_sommets)
+                except ValueError:
+                    max_sommets = 1000
+                try:
+                    max_fw = int(saisie_max_fw)
+                except ValueError:
+                    max_fw = 100
+                
+                dossier_sortie = questionary.text("Dossier des résultats (graphiques) :", default="resultats").ask()
+                with console.status("[cyan]Exécution des benchmarks en cours...[/cyan]"):
+                    executer_benchmarks(dossier_sortie, max_sommets=max_sommets, max_fw=max_fw)
+                console.print(f"Benchmarks terminés. Graphiques sauvegardés dans [bold green]{dossier_sortie}[/bold green]")
             elif choix == "quitter":
                 console.print("Fermeture de l'application. Au revoir.", style="cyan")
                 sys.exit(0)
