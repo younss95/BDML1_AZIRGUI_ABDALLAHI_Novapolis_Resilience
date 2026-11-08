@@ -4,7 +4,7 @@ Outil en ligne de commande (Python) pour analyser le réseau de la métropole de
 accessibilité des sites sensibles, itinéraires de secours, extension de la fibre optique
 et test de scénarios de crise.
 
-Projet EFREI – Graphes. Binôme : Younes AZIRGUI et Abdallahi EL Housseine.
+Projet EFREI – Graphes. Binôme : Younes AZIRGUI et EL Housseine ABDALLAHI.
 
 ---
 
