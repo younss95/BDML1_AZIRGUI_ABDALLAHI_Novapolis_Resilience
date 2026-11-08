@@ -1,4 +1,3 @@
-# novapolis/benchmarks.py
 """Benchmarks des performances des algorithmes de graphes."""
 import time
 import os
