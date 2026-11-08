@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from typing import Callable, Any, List
 from loguru import logger
 
-from novapolis.donnees.csv_reader import charger_jeu
+from novapolis.donnees.csv_loader import charger_jeu
 from novapolis.graphes import parcours, chemins, arbre
 from novapolis.generateur import generer_jeu_de_donnees
 

@@ -10,42 +10,11 @@ TYPES_SECOURS = {"incendie": ["caserne"], "medical": ["hopital"]}
 TYPES_SENSIBLES = {"hopital", "caserne", "ecole", "telecom"}
 INF = float("inf")
 
-# (clé, libellé) : ordre d'affichage du tableau comparatif
-LIBELLES_RESUME = [
-    ("demandes_inaccessibles", "Demandes inaccessibles"),
-    ("devenues_inaccessibles", "  dont devenues inaccessibles"),
-    ("retard_moyen", "Retard moyen"),
-    ("retard_max", "Retard maximal"),
-    ("sites_sensibles_pct", "Sites sensibles accessibles"),
-    ("composantes_fibre", "Composantes de fibre"),
-    ("cout_arbre", "Coût de l'arbre de fibre"),
-    ("cout_reparation", "Coût de réparation"),
-    ("surcout_arbre", "Surcoût de l'arbre"),
-    ("pannes_irreparables", "Pannes sans raccordement"),
-]
-
-
-def formater_valeur(cle, valeur):
-    if valeur is None:
-        return "-"
-    if cle in ("retard_moyen", "retard_max"):
-        return f"{valeur:.1f} min"
-    if cle == "sites_sensibles_pct":
-        return f"{valeur:.0f} %"
-    if cle in ("cout_arbre", "cout_reparation", "surcout_arbre"):
-        return f"{valeur:+.1f}" if cle == "surcout_arbre" else f"{valeur:.1f}"
-    return str(valeur)
-
-
 def sites_de_type(sites, types):
     return [s for s, r in sites.items() if r["type"] in types]
 
-
-# ---------- Trajets ----------
-
 def calculer_trajets(routes, sites, demandes):
-    """Pour chaque demande : {'temps','source','chemin'} depuis le site de secours le plus
-    rapide, ou None si inaccessible. Un Dijkstra par site de secours (mis en cache)."""
+    """Calcule le meilleur trajet pour chaque demande depuis un site de secours adapté."""
     cache, trajets = {}, {}
     for d in demandes:
         types = TYPES_SECOURS.get(d["type"], ["caserne", "hopital"])
@@ -61,9 +30,8 @@ def calculer_trajets(routes, sites, demandes):
         trajets[d["id"]] = meilleur
     return trajets
 
-
 def comparer_trajets(demandes, avant, apres):
-    """Une ligne par demande : temps avant/après, retard absolu et relatif, statut."""
+    """Prépare les lignes de comparaison des trajets."""
     lignes = []
     for d in demandes:
         a, p = avant[d["id"]], apres[d["id"]]
@@ -87,9 +55,6 @@ def comparer_trajets(demandes, avant, apres):
         lignes.append(ligne)
     return lignes
 
-
-# ---------- Indicateurs ----------
-
 def proportion_sites_sensibles(sites, routes):
     """Part (0 à 1) des sites sensibles atteignables depuis une caserne ou un hôpital."""
     sensibles = sites_de_type(sites, TYPES_SENSIBLES)
@@ -98,7 +63,6 @@ def proportion_sites_sensibles(sites, routes):
         distances, _ = ch.dijkstra(routes, source)
         atteints |= {s for s, d in distances.items() if d < INF}
     return sum(1 for s in sensibles if s in atteints) / len(sensibles) if sensibles else 1.0
-
 
 def indicateurs_routiers(sites, routes_sc, lignes):
     retards = [l["retard"] for l in lignes if l["retard"] is not None]
@@ -109,7 +73,6 @@ def indicateurs_routiers(sites, routes_sc, lignes):
         "retard_max": max(retards) if retards else 0.0,
         "sites_sensibles_pct": 100 * proportion_sites_sensibles(sites, routes_sc),
     }
-
 
 def indicateurs_fibre(fibre_base, fibre_sc, actions):
     arbre_base, cout_base, _ = kruskal(fibre_base)
@@ -123,7 +86,7 @@ def indicateurs_fibre(fibre_base, fibre_sc, actions):
             continue
         u, v = a["u"], a["v"]
         if not any({x, y} == {u, v} for x, y, _ in arbre_base):
-            continue                       # tronçon hors de l'arbre : rien à réparer
+            continue
         nouvelle, cout = simuler_panne_et_reparer(fibre_base, arbre_base, (u, v))
         if nouvelle is None:
             irreparables += 1
@@ -133,17 +96,12 @@ def indicateurs_fibre(fibre_base, fibre_sc, actions):
     return {
         "composantes_fibre": comps_sc,
         "cout_arbre": cout_sc,
-        # si le réseau est fragmenté, le coût de l'arbre n'est plus comparable
         "surcout_arbre": cout_sc - cout_base if comps_sc <= comps_base else None,
         "cout_reparation": cout_reparation,
         "pannes_irreparables": irreparables,
     }
 
-
-# ---------- Scénarios ----------
-
 def evaluer_scenario(sites, routes, fibre, demandes, actions, trajets_avant=None):
-    """Applique le scénario sur des copies et calcule tous les indicateurs."""
     routes_sc, fibre_sc = appliquer_scenario(routes, fibre, actions)
     if trajets_avant is None:
         trajets_avant = calculer_trajets(routes, sites, demandes)
@@ -153,9 +111,7 @@ def evaluer_scenario(sites, routes, fibre, demandes, actions, trajets_avant=None
     resume.update(indicateurs_fibre(fibre, fibre_sc, actions))
     return {"resume": resume, "detail": lignes}
 
-
 def comparer_scenarios(sites, routes, fibre, demandes, scenarios):
-    """{nom: {'resume', 'detail'}} : 'normal' (référence) puis chaque scénario du CSV."""
     avant = calculer_trajets(routes, sites, demandes)
     resultats = {"normal": evaluer_scenario(sites, routes, fibre, demandes, [], avant)}
     for nom, actions in scenarios.items():

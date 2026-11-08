@@ -1,6 +1,6 @@
 import pytest
 
-from novapolis.donnees.csv_reader import charger_jeu
+from novapolis.donnees.csv_loader import charger_jeu
 from novapolis.graphes import chemins as ch
 from novapolis.graphes.graphe import Graphe
 from novapolis.graphes.graphes_artificiels import circuit_absorbant_accessible, circuit_absorbant_inaccessible

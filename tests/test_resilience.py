@@ -1,6 +1,6 @@
 import pytest
 
-from novapolis.donnees.csv_reader import charger_jeu, charger_scenarios
+from novapolis.donnees.csv_loader import charger_jeu, charger_scenarios
 from novapolis.donnees.exceptions import ErreurValidation
 from novapolis.graphes.scenarios import appliquer_scenario
 from novapolis.indicateurs import evaluer_scenario, comparer_scenarios
