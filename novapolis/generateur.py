@@ -1,4 +1,3 @@
-# novapolis/generateur.py
 """Générateur de données synthétiques pour les expériences."""
 import csv
 import os
